@@ -6,17 +6,22 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import wb9688.simple_dex_parser.exceptions.InvalidDexMagicException;
+import wb9688.simple_dex_parser.exceptions.UnsupportedDexVersionException;
+
 public class SimpleDexParser {
     private final InputStream input;
     private long bytesRead = 0;
     private long[] stringOffs;
     private long[] typeOffs;
     private String[] types;
+    private String version;
 
-    public SimpleDexParser(final InputStream input) throws IOException {
+    public SimpleDexParser(final InputStream input)
+            throws IOException, InvalidDexMagicException, UnsupportedDexVersionException {
         this.input = input;
         if (!checkDexFileMagic()) {
-            throw new IOException("Invalid .dex");
+            throw new InvalidDexMagicException();
         }
 
         // TODO: Check checksum and signature
@@ -34,7 +39,7 @@ public class SimpleDexParser {
         parseTypes();
     }
 
-    private boolean checkDexFileMagic() throws IOException {
+    private boolean checkDexFileMagic() throws IOException, UnsupportedDexVersionException {
         final byte[] magic = readBytes(8);
         final byte[] correct_magic = new byte[]{0x64, 0x65, 0x78, 0x0A};
         for (int i = 0; i < 4; i++) {
@@ -42,7 +47,19 @@ public class SimpleDexParser {
                 return false;
             }
         }
-        // TODO: Parse version
+
+        final StringBuilder versionBuilder = new StringBuilder(3);
+        for (int i = 4; i < 7; i++) {
+            versionBuilder.append((char) magic[i]);
+        }
+        this.version = versionBuilder.toString();
+
+        if (!this.version.equals("035") && !this.version.equals("037")
+                && !this.version.equals("038") && !this.version.equals("039")
+                && !this.version.equals("040")) {
+            throw new UnsupportedDexVersionException();
+        }
+
         return magic[7] == 0x00;
     }
 
@@ -51,7 +68,7 @@ public class SimpleDexParser {
         int read = 0;
         int tmpRead;
         while (read != amount) {
-            tmpRead = input.read(bytes, read, amount - read);
+            tmpRead = this.input.read(bytes, read, amount - read);
             if (tmpRead == -1) {
                 throw new IOException();
             }
@@ -62,7 +79,7 @@ public class SimpleDexParser {
     }
 
     private byte readByte() throws IOException {
-        final int tmpByte = input.read();
+        final int tmpByte = this.input.read();
         if (tmpByte == -1) {
             throw new IOException();
         }
@@ -73,7 +90,7 @@ public class SimpleDexParser {
     private void skipBytes(final long amount) throws IOException {
         long skipped = 0;
         while (skipped != amount) {
-            skipped += input.skip(amount - skipped);
+            skipped += this.input.skip(amount - skipped);
         }
         this.bytesRead += amount;
     }
@@ -146,7 +163,7 @@ public class SimpleDexParser {
                 @Override
                 public int read() {
                     try {
-                        return bytes.get(index++);
+                        return bytes.get(this.index++);
                     } catch (IndexOutOfBoundsException e) {
                         return -1;
                     }
@@ -155,6 +172,10 @@ public class SimpleDexParser {
 
             this.types[i] = bytesStreamWrapper.readUTF();
         }
+    }
+
+    public String getVersion() {
+        return this.version;
     }
 
     public String[] getTypes() {
